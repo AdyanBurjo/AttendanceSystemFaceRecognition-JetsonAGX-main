@@ -40,19 +40,23 @@ def markAttendance(name):
     args:
     name: str
     '''
+    global current_attendance_file  # Use the global file path
+    
     try:
-        # Get current date for file access
-        current_date = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%y_%m_%d")
-        csv_path = f'Attendance_Entry/Attendance_{current_date}.csv'
+        # Ensure the directory exists
+        os.makedirs("Attendance_Entry", exist_ok=True)
         
-        # If daily file doesn't exist, use backup file
-        if not os.path.exists(csv_path):
-            csv_path = "Attendance_Entry/Attendance_backup.csv"
+        # Use the global attendance file that was created at startup
+        if not os.path.exists(current_attendance_file):
+            # Create new file with headers if it doesn't exist
+            with open(current_attendance_file, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Name", "Time", "Date"])
         
         # Read existing entries
         nameList = []
         try:
-            with open(csv_path, 'r', newline='') as f:
+            with open(current_attendance_file, 'r', newline='') as f:
                 reader = csv.reader(f)
                 next(reader)  # Skip header
                 for row in reader:
@@ -60,58 +64,72 @@ def markAttendance(name):
                         nameList.append(row[0])
         except Exception as e:
             print(f"Error reading CSV: {e}")
-            nameList = []  # Start fresh if file can't be read
+            nameList = []
         
-        # Only add if name not already present
+        # Only add if name not already present in today's list
         if name not in nameList:
             now = datetime.now(pytz.timezone('Asia/Kolkata'))
             time_str = now.strftime('%H:%M:%S')
             date_str = now.strftime('%Y-%m-%d')
             
             try:
-                with open(csv_path, 'a', newline='') as f:
+                with open(current_attendance_file, 'a', newline='') as f:
                     writer = csv.writer(f)
                     writer.writerow([name, time_str, date_str])
                 print(f"Marked attendance for {name} at {time_str}")
             except Exception as e:
                 print(f"Error marking attendance: {e}")
+                # If there's an error, try creating a new file
+                with open(current_attendance_file, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["Name", "Time", "Date"])
+                    writer.writerow([name, time_str, date_str])
     
     except Exception as e:
         print(f"Unexpected error in markAttendance: {e}")
-        # Create a new file if there's an error
+        # If all else fails, use a backup file
+        backup_file = "Attendance_Entry/Attendance_backup.csv"
         try:
-            with open("Attendance_Entry/Attendance_backup.csv", 'a', newline='') as f:
+            with open(backup_file, 'a', newline='') as f:
                 writer = csv.writer(f)
+                if f.tell() == 0:  # If file is empty, write header
+                    writer.writerow(["Name", "Time", "Date"])
                 writer.writerow([name, datetime.now().strftime('%H:%M:%S'), 
                                datetime.now().strftime('%Y-%m-%d')])
+            print(f"Attendance marked in backup file: {backup_file}")
         except Exception as backup_error:
             print(f"Critical error: Could not write to backup file: {backup_error}")
 
+# Initialize global variables
+current_attendance_file = None
+
 # Ensure Attendance_Entry directory exists
-if not os.path.exists("Attendance_Entry"):
-    os.makedirs("Attendance_Entry")
+os.makedirs("Attendance_Entry", exist_ok=True)
 
-# Get current date for file naming
-date = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%y_%m_%d")
-print(f"Current date: {date}")
-
-# CSV file path
-csv_path = f"Attendance_Entry/Attendance_{date}.csv"
-
-# Create or check CSV file
-if not os.path.exists(csv_path):
-    try:
-        with open(csv_path, "w", newline='') as file:
+# Set up the attendance file for today
+try:
+    # Get current date for file naming (only date, not time)
+    current_date = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%y_%m_%d")
+    current_attendance_file = f"Attendance_Entry/Attendance_{current_date}.csv"
+    
+    # Create new file with headers if it doesn't exist
+    if not os.path.exists(current_attendance_file):
+        with open(current_attendance_file, "w", newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["Name", "Time", "Date"])
-        print(f"Created new attendance file: {csv_path}")
-    except Exception as e:
-        print(f"Error creating CSV file: {e}")
-        csv_path = "Attendance_Entry/Attendance_backup.csv"
-        with open(csv_path, "w", newline='') as file:
+        print(f"Created new attendance file: {current_attendance_file}")
+    else:
+        print(f"Using existing attendance file: {current_attendance_file}")
+
+except Exception as e:
+    print(f"Error setting up attendance file: {e}")
+    current_attendance_file = "Attendance_Entry/Attendance_backup.csv"
+    # Create backup file if needed
+    if not os.path.exists(current_attendance_file):
+        with open(current_attendance_file, "w", newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["Name", "Time", "Date"])
-        print(f"Created backup attendance file instead")
+    print(f"Using backup attendance file: {current_attendance_file}")
 
 #Preprocessing the data 
 
