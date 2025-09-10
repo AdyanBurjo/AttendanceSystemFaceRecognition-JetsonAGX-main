@@ -5,6 +5,7 @@ import face_recognition
 import os
 from datetime import datetime
 from datetime import date
+import traceback
 import pytz
 import csv
 
@@ -34,38 +35,83 @@ def identifyEncodings(images, classNames):
 
 def markAttendance(name):
     '''
-    This function do two process
-    1. Taken image name: vk.png -> vk
-    2. Attendance entry in database or csv file
+    This function handles attendance marking in CSV file
     
     args:
     name: str
     '''
-
-    date = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%y_%m_%d_%H_%M")
-    with open(f'Attendance_Entry/Attendance_{date}.csv', 'r+') as f:
-        myDataList = f.readlines()
+    try:
+        # Get current date for file access
+        current_date = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%y_%m_%d")
+        csv_path = f'Attendance_Entry/Attendance_{current_date}.csv'
+        
+        # If daily file doesn't exist, use backup file
+        if not os.path.exists(csv_path):
+            csv_path = "Attendance_Entry/Attendance_backup.csv"
+        
+        # Read existing entries
         nameList = []
-        for line in myDataList:
-            entry = line.split(',')
-            nameList.append(entry[0])
+        try:
+            with open(csv_path, 'r', newline='') as f:
+                reader = csv.reader(f)
+                next(reader)  # Skip header
+                for row in reader:
+                    if row:  # Check if row is not empty
+                        nameList.append(row[0])
+        except Exception as e:
+            print(f"Error reading CSV: {e}")
+            nameList = []  # Start fresh if file can't be read
+        
+        # Only add if name not already present
         if name not in nameList:
-            now = datetime.now()
-            dtString = now.strftime('%H:%M:%S')
-            print(dtString)
-            date_i = now.strftime('%Y-%m-%d')
+            now = datetime.now(pytz.timezone('Asia/Kolkata'))
+            time_str = now.strftime('%H:%M:%S')
+            date_str = now.strftime('%Y-%m-%d')
+            
+            try:
+                with open(csv_path, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([name, time_str, date_str])
+                print(f"Marked attendance for {name} at {time_str}")
+            except Exception as e:
+                print(f"Error marking attendance: {e}")
+    
+    except Exception as e:
+        print(f"Unexpected error in markAttendance: {e}")
+        # Create a new file if there's an error
+        try:
+            with open("Attendance_Entry/Attendance_backup.csv", 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([name, datetime.now().strftime('%H:%M:%S'), 
+                               datetime.now().strftime('%Y-%m-%d')])
+        except Exception as backup_error:
+            print(f"Critical error: Could not write to backup file: {backup_error}")
 
-            print(date_i)
-            f.writelines(f'\n{name},{dtString},{date_i}')
+# Ensure Attendance_Entry directory exists
+if not os.path.exists("Attendance_Entry"):
+    os.makedirs("Attendance_Entry")
 
-#  First create csv file in time and data
-date = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%y_%m_%d_%H_%M")
-print(date)
-header = ("S.NO","Time","Date")
+# Get current date for file naming
+date = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%y_%m_%d")
+print(f"Current date: {date}")
 
-with open(f"Attendance_Entry/Attendance_{date}.csv","w") as file:
-	writer = csv.writer(file)
-	writer.writerow(header)
+# CSV file path
+csv_path = f"Attendance_Entry/Attendance_{date}.csv"
+
+# Create or check CSV file
+if not os.path.exists(csv_path):
+    try:
+        with open(csv_path, "w", newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Name", "Time", "Date"])
+        print(f"Created new attendance file: {csv_path}")
+    except Exception as e:
+        print(f"Error creating CSV file: {e}")
+        csv_path = "Attendance_Entry/Attendance_backup.csv"
+        with open(csv_path, "w", newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Name", "Time", "Date"])
+        print(f"Created backup attendance file instead")
 
 #Preprocessing the data 
 
@@ -88,16 +134,29 @@ print(f'Successfully encoded {len(encodeListKnown)} faces')
 
 
 #Camera capture 
-cap = cv2.VideoCapture(1)  # Use default camera on Windows
+cap = cv2.VideoCapture(0)  # Use default camera on Windows
 
 while True:
     success, img = cap.read()
     imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
     imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
 
-    #Face recognition using dlib
+    #Face recognition using dlib - limit to 1 face
     facesCurFrame = face_recognition.face_locations(imgS)
-    encodesCurFrame = face_recognition.face_encodings(imgS, facesCurFrame)
+    
+    # Only process the first face found
+    if len(facesCurFrame) > 0:
+        # Take only the first face
+        facesCurFrame = [facesCurFrame[0]]
+        encodesCurFrame = face_recognition.face_encodings(imgS, facesCurFrame)
+        
+        # If multiple faces are detected, draw a warning
+        if len(face_recognition.face_locations(imgS)) > 1:
+            cv2.putText(img, "Please show only one face", (10, 30), 
+                       cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 0, 255), 2)
+
+    else:
+        encodesCurFrame = []
 
     for encodeFace, faceLoc in zip(encodesCurFrame, facesCurFrame):
         matches = face_recognition.compare_faces(encodeListKnown, encodeFace, tolerance=0.4)  # Even stricter tolerance

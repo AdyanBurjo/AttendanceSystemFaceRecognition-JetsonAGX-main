@@ -11,7 +11,7 @@ def Intial_data_capture(camera_id=None):
     """
     path = "Attendance_data/"
     if camera_id == None:
-        camera_id = 1  # Use default camera on Windows
+        camera_id = 0  # Use default camera on Windows
     
     # Check existing names in the Attendance_data folder
     existing_names = []
