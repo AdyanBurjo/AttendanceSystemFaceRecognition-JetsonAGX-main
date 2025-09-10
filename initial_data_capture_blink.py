@@ -54,12 +54,14 @@ def Intial_data_capture(camera_id=None):
             last_check_time = current_time
             
             # Convert to RGB for face_recognition
-            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            face_locations = face_recognition.face_locations(rgb_image)
+            small_frame = cv2.resize(image, (0,0), fx=0.25, fy=0.25)
+            rgb_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+            face_locations = face_recognition.face_locations(rgb_small, model="hog")
+
             
             if len(face_locations) > 0:
                 # Get face landmarks
-                face_landmarks = face_recognition.face_landmarks(rgb_image)
+                face_landmarks = face_recognition.face_landmarks(rgb_small)
                 
                 if face_landmarks:
                     # Get eye landmarks
