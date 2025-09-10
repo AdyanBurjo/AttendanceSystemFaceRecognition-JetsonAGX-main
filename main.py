@@ -5,7 +5,6 @@ import face_recognition
 import os
 from datetime import datetime
 from datetime import date
-import traceback
 import pytz
 import csv
 
@@ -36,7 +35,6 @@ def identifyEncodings(images, classNames):
 def markAttendance(name):
     '''
     This function handles attendance marking in CSV file
-    Records every detection without limitations
     
     args:
     name: str
@@ -45,8 +43,10 @@ def markAttendance(name):
         # Ensure the directory exists
         os.makedirs("Attendance_Entry", exist_ok=True)
         
-        # Use a fixed filename that doesn't depend on date/time
-        attendance_file = "Attendance_Entry/Attendance_Log.csv"
+        # Use a fixed filename for today's date
+        now = datetime.now()
+        current_date = now.strftime("%y_%m_%d")
+        attendance_file = f'Attendance_Entry/Attendance_{current_date}.csv'
         
         # Create file with headers if it doesn't exist
         if not os.path.exists(attendance_file):
@@ -54,42 +54,44 @@ def markAttendance(name):
                 writer = csv.writer(f)
                 writer.writerow(["Name", "Time", "Date"])
         
-        # Record the attendance (always add new entry)
+        # Record the attendance
+        time_str = now.strftime('%H:%M:%S')
+        date_str = now.strftime('%Y-%m-%d')
+        
+        with open(attendance_file, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([name, time_str, date_str])
+        print(f"Logged attendance for {name} at {time_str}")
+    
+    except Exception as e:
+        print(f"Error marking attendance: {e}")
+        # If there's an error, try using a backup file
         try:
-            now = datetime.now(pytz.timezone('Asia/Kolkata'))
-            time_str = now.strftime('%H:%M:%S')
-            date_str = now.strftime('%Y-%m-%d')
-            
-            with open(attendance_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([name, time_str, date_str])
-            print(f"Logged detection of {name} at {time_str}")
-            
-        except Exception as e:
-            print(f"Error logging attendance: {e}")
-            # If there's an error with the main file, use a backup
             backup_file = "Attendance_Entry/Attendance_Backup.csv"
             with open(backup_file, 'a', newline='') as f:
                 writer = csv.writer(f)
                 if f.tell() == 0:  # If file is empty, write header
                     writer.writerow(["Name", "Time", "Date"])
-                writer.writerow([name, time_str, date_str])
-            print(f"Logged to backup file instead")
-    
-    except Exception as e:
-        print(f"Critical error in markAttendance: {e}")
-        print("Continuing with face detection...")
+                writer.writerow([name, now.strftime('%H:%M:%S'), now.strftime('%Y-%m-%d')])
+            print("Logged to backup file instead")
+        except Exception as backup_error:
+            print(f"Failed to write to backup file: {backup_error}")
 
 # Ensure Attendance_Entry directory exists
 os.makedirs("Attendance_Entry", exist_ok=True)
 
-# Initialize the attendance log file if it doesn't exist
-attendance_file = "Attendance_Entry/Attendance_Log.csv"
+# Create today's attendance file
+current_date = datetime.now().strftime("%y_%m_%d")
+attendance_file = f"Attendance_Entry/Attendance_{current_date}.csv"
+
+# Create file with headers if it doesn't exist
 if not os.path.exists(attendance_file):
     with open(attendance_file, "w", newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Name", "Time", "Date"])
-    print("Initialized new attendance log file")
+    print(f"Created new attendance file for today: {attendance_file}")
+else:
+    print(f"Using today's attendance file: {attendance_file}")
 
 #Preprocessing the data 
 
@@ -119,22 +121,9 @@ while True:
     imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
     imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
 
-    #Face recognition using dlib - limit to 1 face
+    #Face recognition using dlib
     facesCurFrame = face_recognition.face_locations(imgS)
-    
-    # Only process the first face found
-    if len(facesCurFrame) > 0:
-        # Take only the first face
-        facesCurFrame = [facesCurFrame[0]]
-        encodesCurFrame = face_recognition.face_encodings(imgS, facesCurFrame)
-        
-        # If multiple faces are detected, draw a warning
-        if len(face_recognition.face_locations(imgS)) > 1:
-            cv2.putText(img, "Please show only one face", (10, 30), 
-                       cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 0, 255), 2)
-
-    else:
-        encodesCurFrame = []
+    encodesCurFrame = face_recognition.face_encodings(imgS, facesCurFrame)
 
     for encodeFace, faceLoc in zip(encodesCurFrame, facesCurFrame):
         matches = face_recognition.compare_faces(encodeListKnown, encodeFace, tolerance=0.4)  # Even stricter tolerance
