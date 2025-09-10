@@ -17,20 +17,9 @@ def calculate_eye_aspect_ratio(eye_landmarks):
     ear = (v1 + v2) / (2.0 * h)
     return ear
 
-def calculate_mouth_aspect_ratio(mouth_landmarks):
-    """Calculate the mouth aspect ratio to detect opening"""
-    # Vertical distances
-    v1 = np.linalg.norm(np.array(mouth_landmarks[2]) - np.array(mouth_landmarks[10]))  # Upper and lower lip
-    v2 = np.linalg.norm(np.array(mouth_landmarks[4]) - np.array(mouth_landmarks[8]))
-    # Horizontal distance
-    h = np.linalg.norm(np.array(mouth_landmarks[0]) - np.array(mouth_landmarks[6]))
-    # Calculate mouth aspect ratio
-    mar = (v1 + v2) / (2.0 * h)
-    return mar
-
 def Intial_data_capture(camera_id=None):
     """
-    Capture a face image when detecting eye blink and mouth opening.
+    Capture a face image when detecting eye blink.
     
     args:
     camera_id : int
@@ -45,10 +34,8 @@ def Intial_data_capture(camera_id=None):
     
     # Constants for detection
     EYE_AR_THRESH = 0.2  # Threshold for eye blink detection
-    MOUTH_AR_THRESH = 0.5  # Threshold for mouth opening detection
     
     blink_detected = False
-    mouth_opened = False
     
     while True:
         return_value, image = camera.read()
@@ -78,40 +65,28 @@ def Intial_data_capture(camera_id=None):
             right_ear = calculate_eye_aspect_ratio(right_eye)
             avg_ear = (left_ear + right_ear) / 2.0
             
-            # Calculate mouth aspect ratio
-            mouth = landmarks['top_lip'] + landmarks['bottom_lip']
-            mar = calculate_mouth_aspect_ratio(mouth)
-            
             # Detect blink
             if avg_ear < EYE_AR_THRESH:
                 blink_detected = True
                 cv2.putText(display_image, "Blink Detected!", (10, 30),
                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             
-            # Detect mouth opening
-            if mar > MOUTH_AR_THRESH:
-                mouth_opened = True
-                cv2.putText(display_image, "Mouth Opened!", (10, 60),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            
             # Draw status
             cv2.putText(display_image, f"Eye AR: {avg_ear:.2f}", (300, 30),
                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            cv2.putText(display_image, f"Mouth AR: {mar:.2f}", (300, 60),
-                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             
-            # If both blink and mouth opening detected, save the image
-            if blink_detected and mouth_opened:
+            # If blink detected, save the image
+            if blink_detected:
                 cv2.imwrite(f'{path}{Name}.png', image)
                 print(f"Image saved successfully!")
                 break
         
         # Show instructions
-        cv2.putText(display_image, "Blink eyes and open mouth to capture", (10, 450),
+        cv2.putText(display_image, "Blink eyes to capture", (10, 450),
                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         
         # Show the image
-        cv2.imshow('Capture - Blink and Open Mouth', display_image)
+        cv2.imshow('Capturing', display_image)
         
         # ESC to exit
         if cv2.waitKey(1) == 27:
