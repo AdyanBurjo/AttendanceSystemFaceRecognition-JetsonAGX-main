@@ -1,8 +1,8 @@
 import cv2
 import face_recognition
+import os
 
 def Intial_data_capture(camera_id=None):
-
     """
     At first, a person's image was taken using a reference object.     
     
@@ -11,9 +11,25 @@ def Intial_data_capture(camera_id=None):
     """
     path = "Attendance_data/"
     if camera_id == None:
-     	camera_id = 1  # Use default camera on Windows
+        camera_id = 1  # Use default camera on Windows
     
-    Name:str = input("Please Enter your name:")
+    # Check existing names in the Attendance_data folder
+    existing_names = []
+    for filename in os.listdir(path):
+        if filename.endswith('.png'):
+            name_without_ext = os.path.splitext(filename)[0]
+            existing_names.append(name_without_ext.lower())  # Store names in lowercase
+    
+    while True:
+        Name = input("Please Enter your name: ")
+        if Name.lower() in existing_names:
+            print(f"Error: {Name} already exists in the database!")
+            retry = input("Do you want to try a different name? (yes/no): ")
+            if retry.lower() != 'yes':
+                print("Registration cancelled.")
+                return
+        else:
+            break
 
     camera = cv2.VideoCapture(camera_id)
     
