@@ -36,100 +36,60 @@ def identifyEncodings(images, classNames):
 def markAttendance(name):
     '''
     This function handles attendance marking in CSV file
+    Records every detection without limitations
     
     args:
     name: str
     '''
-    global current_attendance_file  # Use the global file path
-    
     try:
         # Ensure the directory exists
         os.makedirs("Attendance_Entry", exist_ok=True)
         
-        # Use the global attendance file that was created at startup
-        if not os.path.exists(current_attendance_file):
-            # Create new file with headers if it doesn't exist
-            with open(current_attendance_file, 'w', newline='') as f:
+        # Use a fixed filename that doesn't depend on date/time
+        attendance_file = "Attendance_Entry/Attendance_Log.csv"
+        
+        # Create file with headers if it doesn't exist
+        if not os.path.exists(attendance_file):
+            with open(attendance_file, 'w', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow(["Name", "Time", "Date"])
         
-        # Read existing entries
-        nameList = []
+        # Record the attendance (always add new entry)
         try:
-            with open(current_attendance_file, 'r', newline='') as f:
-                reader = csv.reader(f)
-                next(reader)  # Skip header
-                for row in reader:
-                    if row:  # Check if row is not empty
-                        nameList.append(row[0])
-        except Exception as e:
-            print(f"Error reading CSV: {e}")
-            nameList = []
-        
-        # Only add if name not already present in today's list
-        if name not in nameList:
             now = datetime.now(pytz.timezone('Asia/Kolkata'))
             time_str = now.strftime('%H:%M:%S')
             date_str = now.strftime('%Y-%m-%d')
             
-            try:
-                with open(current_attendance_file, 'a', newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow([name, time_str, date_str])
-                print(f"Marked attendance for {name} at {time_str}")
-            except Exception as e:
-                print(f"Error marking attendance: {e}")
-                # If there's an error, try creating a new file
-                with open(current_attendance_file, 'w', newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(["Name", "Time", "Date"])
-                    writer.writerow([name, time_str, date_str])
-    
-    except Exception as e:
-        print(f"Unexpected error in markAttendance: {e}")
-        # If all else fails, use a backup file
-        backup_file = "Attendance_Entry/Attendance_backup.csv"
-        try:
+            with open(attendance_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([name, time_str, date_str])
+            print(f"Logged detection of {name} at {time_str}")
+            
+        except Exception as e:
+            print(f"Error logging attendance: {e}")
+            # If there's an error with the main file, use a backup
+            backup_file = "Attendance_Entry/Attendance_Backup.csv"
             with open(backup_file, 'a', newline='') as f:
                 writer = csv.writer(f)
                 if f.tell() == 0:  # If file is empty, write header
                     writer.writerow(["Name", "Time", "Date"])
-                writer.writerow([name, datetime.now().strftime('%H:%M:%S'), 
-                               datetime.now().strftime('%Y-%m-%d')])
-            print(f"Attendance marked in backup file: {backup_file}")
-        except Exception as backup_error:
-            print(f"Critical error: Could not write to backup file: {backup_error}")
-
-# Initialize global variables
-current_attendance_file = None
+                writer.writerow([name, time_str, date_str])
+            print(f"Logged to backup file instead")
+    
+    except Exception as e:
+        print(f"Critical error in markAttendance: {e}")
+        print("Continuing with face detection...")
 
 # Ensure Attendance_Entry directory exists
 os.makedirs("Attendance_Entry", exist_ok=True)
 
-# Set up the attendance file for today
-try:
-    # Get current date for file naming (only date, not time)
-    current_date = datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%y_%m_%d")
-    current_attendance_file = f"Attendance_Entry/Attendance_{current_date}.csv"
-    
-    # Create new file with headers if it doesn't exist
-    if not os.path.exists(current_attendance_file):
-        with open(current_attendance_file, "w", newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(["Name", "Time", "Date"])
-        print(f"Created new attendance file: {current_attendance_file}")
-    else:
-        print(f"Using existing attendance file: {current_attendance_file}")
-
-except Exception as e:
-    print(f"Error setting up attendance file: {e}")
-    current_attendance_file = "Attendance_Entry/Attendance_backup.csv"
-    # Create backup file if needed
-    if not os.path.exists(current_attendance_file):
-        with open(current_attendance_file, "w", newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(["Name", "Time", "Date"])
-    print(f"Using backup attendance file: {current_attendance_file}")
+# Initialize the attendance log file if it doesn't exist
+attendance_file = "Attendance_Entry/Attendance_Log.csv"
+if not os.path.exists(attendance_file):
+    with open(attendance_file, "w", newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Name", "Time", "Date"])
+    print("Initialized new attendance log file")
 
 #Preprocessing the data 
 
