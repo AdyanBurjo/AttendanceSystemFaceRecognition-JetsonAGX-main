@@ -16,17 +16,45 @@ def calculate_eye_aspect_ratio(eye_landmarks):
     ear = (vertical_1 + vertical_2) / (2.0 * horizontal)
     return ear
 
-def calculate_mouth_aspect_ratio(mouth_landmarks):
+def detect_face_orientation(landmarks):
     """
-    Calculate the mouth aspect ratio to detect open mouth
+    Detect face orientation using facial landmarks
+    Returns: left, right, or center
     """
-    # Calculate the euclidean distances
-    vertical = np.linalg.norm(np.array(mouth_landmarks[2]) - np.array(mouth_landmarks[6]))
-    horizontal = np.linalg.norm(np.array(mouth_landmarks[0]) - np.array(mouth_landmarks[4]))
+    # Get key facial points
+    nose_tip = np.array(landmarks['nose_tip'][0])
+    left_eye_pts = np.array(landmarks['left_eye'])
+    right_eye_pts = np.array(landmarks['right_eye'])
     
-    # Calculate mouth aspect ratio
-    mar = vertical / horizontal
-    return mar
+    # Calculate eye centers
+    left_eye = np.mean(left_eye_pts, axis=0)
+    right_eye = np.mean(right_eye_pts, axis=0)
+    eyes_center = (left_eye + right_eye) / 2
+    
+    # Calculate eye widths (use for asymmetry detection)
+    left_eye_width = np.linalg.norm(left_eye_pts[0] - left_eye_pts[3])
+    right_eye_width = np.linalg.norm(right_eye_pts[0] - right_eye_pts[3])
+    eye_width_ratio = left_eye_width / right_eye_width if right_eye_width > 0 else 1.0
+    
+    # Calculate horizontal difference relative to eye width
+    eye_distance = abs(right_eye[0] - left_eye[0])
+    nose_offset = nose_tip[0] - eyes_center[0]
+    
+    # Normalize the offset by eye distance
+    normalized_offset = nose_offset / (eye_distance * 0.5)
+    
+    # Thresholds for movement detection
+    CENTER_THRESHOLD = 0.3       # Smaller range for center
+    TURN_THRESHOLD = 0.6        # Lower threshold to detect turns easier
+    
+    # Use both normalized offset and eye width ratio for detection
+    if abs(normalized_offset) <= CENTER_THRESHOLD and 0.8 < eye_width_ratio < 1.2:
+        return "center"
+    elif normalized_offset < -TURN_THRESHOLD or eye_width_ratio > 1.3:  # Left turn makes right eye appear smaller
+        return "left"
+    elif normalized_offset > TURN_THRESHOLD or eye_width_ratio < 0.7:   # Right turn makes left eye appear smaller
+        return "right"
+    return "center"  # Default to center if not clearly left or right
 
 def Intial_data_capture(camera_id=None):
     """
@@ -37,7 +65,7 @@ def Intial_data_capture(camera_id=None):
     """
     path = "Attendance_data/"
     if camera_id == None:
-        camera_id = 0  # Use default camera on Windows
+        camera_id = 1  # Use default camera on Windows
     
     # Check existing names in the Attendance_data folder
     existing_names = []
@@ -59,24 +87,29 @@ def Intial_data_capture(camera_id=None):
 
     camera = cv2.VideoCapture(camera_id)
     
-    # Constants for blink and mouth detection
+    # Constants for detection
     EYE_BLINK_THRESHOLD = 0.2  # Stricter threshold for blink detection
-    MOUTH_OPEN_THRESHOLD = 0.7  # Require wider mouth opening
+    ORIENTATION_HOLD_TIME = 2.0  # Time to hold each position (2 seconds)
     
+    # Movement sequence states
+    movement_sequence = ["center", "right", "blink"]
+    current_movement = 0
+    movement_start_time = 0
+    orientation_confirmed = False
+    
+    # Blink detection variables
     blink_counter = 0
     consecutive_blink_frames = 0
-    mouth_counter = 0
-    consecutive_mouth_frames = 0
-    is_mouth_open = False
     is_eyes_closed = False
     last_blink_time = 0
     required_blinks = 3
-    required_mouth_frames = 20  # Number of frames mouth must be open
     
     print("\nInstructions:")
-    print("1. Look at the camera")
-    print("2. Blink your eyes and open your mouth")
-    print("3. Hold still until capture is complete")
+    print("Please follow these steps in order:")
+    print("1. Look at CENTER for 2 seconds")
+    print("2. Turn RIGHT for 2 seconds")
+    print("3. Look at CENTER and blink 3 times")
+    print("Press ESC to cancel\n")
     print("Press ESC to cancel\n")
     
     while True:
@@ -97,76 +130,145 @@ def Intial_data_capture(camera_id=None):
         
         if len(face_locations) > 0 and len(face_landmarks) > 0:
             landmarks = face_landmarks[0]
-            
-            # Get eye landmarks
-            left_eye = landmarks['left_eye']
-            right_eye = landmarks['right_eye']
-            
-            # Calculate eye aspect ratios
-            left_ear = calculate_eye_aspect_ratio(left_eye)
-            right_ear = calculate_eye_aspect_ratio(right_eye)
-            avg_ear = (left_ear + right_ear) / 2.0
-            
-            # Calculate mouth aspect ratio
-            mouth = landmarks['top_lip'] + landmarks['bottom_lip']
-            mar = calculate_mouth_aspect_ratio(mouth)
-            
-            # Draw facial landmarks for visualization
-            for feature in landmarks.values():
-                points = np.array(feature)
-                cv2.polylines(display_image, [points], True, (0, 255, 0), 1)
-            
-            # Check for blink
             current_time = cv2.getTickCount() / cv2.getTickFrequency()
             
-            if avg_ear < EYE_BLINK_THRESHOLD:
-                consecutive_blink_frames += 1
-                if consecutive_blink_frames >= 2:  # Need 2 consecutive frames of closed eyes
-                    if not is_eyes_closed and (current_time - last_blink_time) > 1.0:  # At least 1 second between blinks
-                        blink_counter += 1
-                        last_blink_time = current_time
-                        is_eyes_closed = True
-            else:
-                is_eyes_closed = False
-                consecutive_blink_frames = 0
+            # Scale landmarks back to original image size
+            scaled_landmarks = {}
+            for feature, points in landmarks.items():
+                scaled_points = []
+                for point in points:
+                    scaled_points.append([point[0] * 4, point[1] * 4])
+                scaled_landmarks[feature] = scaled_points
             
-            # Check for mouth open
-            if mar > MOUTH_OPEN_THRESHOLD:
-                consecutive_mouth_frames += 1
-                if consecutive_mouth_frames >= required_mouth_frames:
-                    is_mouth_open = True
-            else:
-                consecutive_mouth_frames = 0
-                is_mouth_open = False
+            # Draw facial landmarks for visualization with thicker lines
+            for feature, points in scaled_landmarks.items():
+                points = np.array(points)
+                cv2.polylines(display_image, [points], True, (0, 255, 0), 2)
+                # For key points like eyes, nose, and mouth, add dots
+                if feature in ['left_eye', 'right_eye', 'nose_tip', 'top_lip', 'bottom_lip']:
+                    for point in points:
+                        cv2.circle(display_image, (int(point[0]), int(point[1])), 2, (0, 255, 0), -1)
             
-            # Display status
-            cv2.putText(display_image, f"Blinks: {blink_counter}/{required_blinks}", (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            # Get current orientation
+            orientation = detect_face_orientation(landmarks)
             
-            if is_mouth_open:
-                cv2.putText(display_image, "MOUTH OPEN!", (10, 60),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            else:
-                cv2.putText(display_image, f"Open mouth wider ({consecutive_mouth_frames}/{required_mouth_frames})", 
-                           (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            # Get image dimensions for text placement
+            height, width = display_image.shape[:2]
             
-            # Display measurements
-            cv2.putText(display_image, f"EAR: {avg_ear:.2f}", (300, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-            cv2.putText(display_image, f"MAR: {mar:.2f}", (300, 60),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+            # Show current face orientation (debug info)
+            orientation_status = f"Current Position: {orientation.upper()}"
+            cv2.putText(display_image, orientation_status,
+                       (width - 300, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                       0.7, (0, 255, 255), 2)
             
-            # Check if all conditions are met
-            if blink_counter >= required_blinks and is_mouth_open:
-                cv2.putText(display_image, "CAPTURING!", (10, 90),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                # Save image
-                cv2.imwrite(f'{path}{Name}'+'.png', image)
-                print(f"Image saved successfully with face detected!")
-                break
+            # Handle movement sequence
+            required_orientation = movement_sequence[current_movement]
+            if required_orientation != "blink":  # Handle face movements
+                
+                if orientation == required_orientation and not orientation_confirmed:
+                    if movement_start_time == 0:
+                        movement_start_time = current_time
+                    elif (current_time - movement_start_time) >= ORIENTATION_HOLD_TIME:
+                        orientation_confirmed = True
+                        print(f"{required_orientation.upper()} position confirmed!")
+                else:
+                    movement_start_time = 0
+                
+                if orientation_confirmed:
+                    current_movement += 1
+                    orientation_confirmed = False
+                    movement_start_time = 0
+                
+                # Get image dimensions
+                height, width = display_image.shape[:2]
+                center_x = width // 2
+                center_y = height // 2
+
+                # Display instructions in center of screen
+                required_orientation = movement_sequence[current_movement]
+                if required_orientation == "center":
+                    instruction_text = "LOOK AT CENTER"
+                elif required_orientation == "right":
+                    instruction_text = "TURN RIGHT"
+                else:  # blink phase
+                    instruction_text = f"BLINK {blink_counter}/{required_blinks}"
+                
+                # Add remaining time if holding position
+                if movement_start_time > 0 and required_orientation != "blink":
+                    remaining_time = ORIENTATION_HOLD_TIME - (current_time - movement_start_time)
+                    if remaining_time > 0:
+                        instruction_text += f" ({remaining_time:.1f}s)"
+
+                # Add text background for better visibility
+                text_size = cv2.getTextSize(instruction_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
+                text_x = (width - text_size[0]) // 2
+                text_y = height - 50  # Position at bottom of screen
+                
+                # Draw black background rectangle
+                cv2.rectangle(display_image,
+                            (text_x - 10, text_y - text_size[1] - 10),
+                            (text_x + text_size[0] + 10, text_y + 10),
+                            (0, 0, 0), -1)
+                
+                # Draw text
+                cv2.putText(display_image, instruction_text,
+                           (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
+                           1.2, (0, 255, 255), 3)
+
+                # Draw progress indicator
+                progress = f"Step {current_movement + 1} of {len(movement_sequence)}"
+                cv2.putText(display_image, progress,
+                           (center_x - 50, 30),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            
+            else:  # Handle blinking phase
+                # Get eye landmarks
+                left_eye = landmarks['left_eye']
+                right_eye = landmarks['right_eye']
+                
+                # Calculate eye aspect ratios
+                left_ear = calculate_eye_aspect_ratio(left_eye)
+                right_ear = calculate_eye_aspect_ratio(right_eye)
+                avg_ear = (left_ear + right_ear) / 2.0
+                
+                if orientation == "center":
+                    # Check for blink
+                    if avg_ear < EYE_BLINK_THRESHOLD:
+                        consecutive_blink_frames += 1
+                        if consecutive_blink_frames >= 2:  # Need 2 consecutive frames of closed eyes
+                            if not is_eyes_closed and (current_time - last_blink_time) > 1.0:  # At least 1 second between blinks
+                                blink_counter += 1
+                                last_blink_time = current_time
+                                is_eyes_closed = True
+                    else:
+                        is_eyes_closed = False
+                        consecutive_blink_frames = 0
+                    
+                    # Display blink status
+                    cv2.putText(display_image, "Look at CENTER and BLINK", (10, 30),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    cv2.putText(display_image, f"Blinks: {blink_counter}/{required_blinks}", (10, 60),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                else:
+                    cv2.putText(display_image, "Please look at CENTER", (10, 30),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                
+                # Check if all conditions are met
+                if blink_counter >= required_blinks:
+                    # Add delay after last blink
+                    if (current_time - last_blink_time) < 1.0:  # Wait for 1 second
+                        cv2.putText(display_image, "Get ready for capture...", (10, 90),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                    else:
+                        cv2.putText(display_image, "CAPTURING!", (10, 90),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                        # Save image
+                        cv2.imwrite(f'{path}{Name}'+'.png', image)
+                        print(f"Image saved successfully with face detected!")
+                        break
         
         # Show the image
-        cv2.imshow('Capture - Blink and Open Mouth', display_image)
+        cv2.imshow('Capturing', display_image)
         
         # Check for ESC key
         if cv2.waitKey(1) == 27:  # ESC
