@@ -88,7 +88,7 @@ def Intial_data_capture(camera_id=None):
     camera = cv2.VideoCapture(camera_id)
     
     # Constants for detection
-    EYE_BLINK_THRESHOLD = 0.2  # Stricter threshold for blink detection
+    EYE_BLINK_THRESHOLD = 0.3  # More lenient threshold for blink detection
     ORIENTATION_HOLD_TIME = 2.0  # Time to hold each position (2 seconds)
     
     # Movement sequence states
@@ -218,11 +218,16 @@ def Intial_data_capture(camera_id=None):
                 avg_ear = (left_ear + right_ear) / 2.0
                 
                 if orientation == "center":
-                    # Check for blink
+                    # Check for blink with debug info
+                    cv2.putText(display_image, f"Eye Ratio: {avg_ear:.2f}",
+                               (10, 150), cv2.FONT_HERSHEY_SIMPLEX,
+                               0.7, (255, 255, 255), 2)
+                    
+                    # More lenient blink detection
                     if avg_ear < EYE_BLINK_THRESHOLD:
                         consecutive_blink_frames += 1
-                        if consecutive_blink_frames >= 2:  # Need 2 consecutive frames of closed eyes
-                            if not is_eyes_closed and (current_time - last_blink_time) > 1.0:  # At least 1 second between blinks
+                        if consecutive_blink_frames >= 1:  # Only need 1 frame of closed eyes
+                            if not is_eyes_closed and (current_time - last_blink_time) > 0.5:  # Reduced time between blinks to 0.5 seconds
                                 blink_counter += 1
                                 last_blink_time = current_time
                                 is_eyes_closed = True
