@@ -20,7 +20,8 @@ def identifyEncodings(images, classNames):
     
     encodeList = []
     for img, name in zip(images, classNames):
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        small_frame = cv2.resize(img, (0,0), fx=0.25, fy=0.25)
+        img = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
         encodings = face_recognition.face_encodings(img)
         if len(encodings) > 0:
             encode = encodings[0]
@@ -118,8 +119,8 @@ cap = cv2.VideoCapture(0)  # Use default camera on Windows
 
 while True:
     success, img = cap.read()
-    imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
-    imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
+    small_frame = cv2.resize(img, (0,0), fx=0.25, fy=0.25)
+    imgS = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
     #Face recognition using dlib
     facesCurFrame = face_recognition.face_locations(imgS)

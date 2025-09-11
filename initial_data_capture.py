@@ -34,7 +34,7 @@ def detect_face_orientation(landmarks):
     # Calculate eye widths (use for asymmetry detection)
     left_eye_width = np.linalg.norm(left_eye_pts[0] - left_eye_pts[3])
     right_eye_width = np.linalg.norm(right_eye_pts[0] - right_eye_pts[3])
-    eye_width_ratio = left_eye_width / right_eye_width if right_eye_width > 0 else 1.0
+    eye_width_ratio = right_eye_width / left_eye_width if left_eye_width > 0 else 1.0
     
     # Calculate horizontal difference relative to eye width
     eye_distance = abs(right_eye[0] - left_eye[0])
@@ -50,10 +50,10 @@ def detect_face_orientation(landmarks):
     # Use both normalized offset and eye width ratio for detection
     if abs(normalized_offset) <= CENTER_THRESHOLD and 0.8 < eye_width_ratio < 1.2:
         return "center"
-    elif normalized_offset < -TURN_THRESHOLD or eye_width_ratio > 1.3:  # Left turn makes right eye appear smaller
-        return "left"
-    elif normalized_offset > TURN_THRESHOLD or eye_width_ratio < 0.7:   # Right turn makes left eye appear smaller
+    elif normalized_offset < -TURN_THRESHOLD or eye_width_ratio > 1.3:  # Left turn makes left eye appear larger
         return "right"
+    elif normalized_offset > TURN_THRESHOLD or eye_width_ratio < 0.5:   # Right turn makes right eye appear larger
+        return "left"
     return "center"  # Default to center if not clearly left or right
 
 def Intial_data_capture(camera_id=None):
@@ -65,7 +65,7 @@ def Intial_data_capture(camera_id=None):
     """
     path = "Attendance_data/"
     if camera_id == None:
-        camera_id = 1  # Use default camera on Windows
+        camera_id = 0  # Use default camera on Windows
     
     # Check existing names in the Attendance_data folder
     existing_names = []
@@ -184,7 +184,7 @@ def Intial_data_capture(camera_id=None):
                 center_x = width // 2
                 center_y = height // 2
 
-                # Display instructions in center of screen
+                # Get instruction based on current required orientation
                 required_orientation = movement_sequence[current_movement]
                 if required_orientation == "center":
                     instruction_text = "LOOK AT CENTER"
@@ -199,27 +199,14 @@ def Intial_data_capture(camera_id=None):
                     if remaining_time > 0:
                         instruction_text += f" ({remaining_time:.1f}s)"
 
-                # Add text background for better visibility
-                text_size = cv2.getTextSize(instruction_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
-                text_x = (width - text_size[0]) // 2
-                text_y = height - 50  # Position at bottom of screen
-                
-                # Draw black background rectangle
-                cv2.rectangle(display_image,
-                            (text_x - 10, text_y - text_size[1] - 10),
-                            (text_x + text_size[0] + 10, text_y + 10),
-                            (0, 0, 0), -1)
-                
-                # Draw text
-                cv2.putText(display_image, instruction_text,
-                           (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
-                           1.2, (0, 255, 255), 3)
-
-                # Draw progress indicator
+                # Draw step and instruction in top left
                 progress = f"Step {current_movement + 1} of {len(movement_sequence)}"
                 cv2.putText(display_image, progress,
-                           (center_x - 50, 30),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
+                           0.7, (255, 255, 255), 2)
+                cv2.putText(display_image, instruction_text,
+                           (10, 60), cv2.FONT_HERSHEY_SIMPLEX,
+                           0.7, (0, 255, 255), 2)
             
             else:  # Handle blinking phase
                 # Get eye landmarks
@@ -244,23 +231,34 @@ def Intial_data_capture(camera_id=None):
                         is_eyes_closed = False
                         consecutive_blink_frames = 0
                     
-                    # Display blink status
-                    cv2.putText(display_image, "Look at CENTER and BLINK", (10, 30),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    cv2.putText(display_image, f"Blinks: {blink_counter}/{required_blinks}", (10, 60),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    # Display blink status in top left
+                    progress = f"Step {current_movement + 1} of {len(movement_sequence)}"
+                    cv2.putText(display_image, progress,
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                               0.7, (255, 255, 255), 2)
+                    cv2.putText(display_image, "Look at CENTER and BLINK",
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX,
+                               0.7, (0, 255, 0), 2)
+                    cv2.putText(display_image, f"Blinks: {blink_counter}/{required_blinks}",
+                               (10, 90), cv2.FONT_HERSHEY_SIMPLEX,
+                               0.7, (0, 255, 0), 2)
                 else:
-                    cv2.putText(display_image, "Please look at CENTER", (10, 30),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                    progress = f"Step {current_movement + 1} of {len(movement_sequence)}"
+                    cv2.putText(display_image, progress,
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                               0.7, (255, 255, 255), 2)
+                    cv2.putText(display_image, "Please look at CENTER",
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX,
+                               0.7, (0, 255, 255), 2)
                 
                 # Check if all conditions are met
                 if blink_counter >= required_blinks:
                     # Add delay after last blink
                     if (current_time - last_blink_time) < 1.0:  # Wait for 1 second
-                        cv2.putText(display_image, "Get ready for capture...", (10, 90),
+                        cv2.putText(display_image, "Get ready for capture...", (10, 120),
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                     else:
-                        cv2.putText(display_image, "CAPTURING!", (10, 90),
+                        cv2.putText(display_image, "CAPTURING!", (10, 120),
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                         # Save image
                         cv2.imwrite(f'{path}{Name}'+'.png', image)
