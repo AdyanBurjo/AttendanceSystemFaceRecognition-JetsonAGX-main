@@ -110,7 +110,6 @@ def Intial_data_capture(camera_id=None):
     print("2. Turn RIGHT for 2 seconds")
     print("3. Look at CENTER and blink 3 times")
     print("Press ESC to cancel\n")
-    print("Press ESC to cancel\n")
     
     while True:
         return_value, image = camera.read()

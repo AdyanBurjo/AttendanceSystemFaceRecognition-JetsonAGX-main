@@ -124,12 +124,31 @@ while True:
 
     #Face recognition using dlib
     facesCurFrame = face_recognition.face_locations(imgS)
-    encodesCurFrame = face_recognition.face_encodings(imgS, facesCurFrame)
-
-    for encodeFace, faceLoc in zip(encodesCurFrame, facesCurFrame):
-        matches = face_recognition.compare_faces(encodeListKnown, encodeFace, tolerance=0.4)  # Even stricter tolerance
-        faceDis = face_recognition.face_distance(encodeListKnown, encodeFace)
+    
+    # Handle multiple faces detection
+    if len(facesCurFrame) > 1:
+        # Draw warning for multiple faces
+        cv2.putText(img, "WARNING: Multiple faces detected", (10, 30),
+                    cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 0, 255), 2)
+        # Find the largest face (closest to camera)
+        largest_area = 0
+        largest_face_idx = 0
+        for idx, (top, right, bottom, left) in enumerate(facesCurFrame):
+            area = (right - left) * (bottom - top)
+            if area > largest_area:
+                largest_area = area
+                largest_face_idx = idx
+        # Only keep the largest face
+        facesCurFrame = [facesCurFrame[largest_face_idx]]
+    
+    # Only process if exactly one face is detected
+    if len(facesCurFrame) == 1:
+        encodesCurFrame = face_recognition.face_encodings(imgS, facesCurFrame)
         
+        for encodeFace, faceLoc in zip(encodesCurFrame, facesCurFrame):
+            matches = face_recognition.compare_faces(encodeListKnown, encodeFace, tolerance=0.4)  # Even stricter tolerance
+            faceDis = face_recognition.face_distance(encodeListKnown, encodeFace)
+            
         # Only proceed if we have any matches and the best match is very confident
         if True in matches:
             matchIndex = np.argmin(faceDis)
@@ -147,8 +166,13 @@ while True:
                     cv2.putText(img, name, (x1 + 6, y2 - 6), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
                     markAttendance(name)
 
+    # Show instruction if no face is detected
+    if len(facesCurFrame) == 0:
+        cv2.putText(img, "No face detected", (10, 30),
+                    cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 255, 255), 2)
+    
     cv2.imshow('Attendance System', img)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if cv2.waitKey(1) & 0xFF == 27: #ESC
         break
   
 # After the loop release the cap object
